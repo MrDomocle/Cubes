@@ -1,6 +1,7 @@
 import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
 
 var clock = new THREE.Clock();
 var delta = 0;
@@ -10,26 +11,91 @@ var speed = 0;
 var target = new THREE.Quaternion(0, 1, 0, 0);
 
 const renderer = new THREE.WebGLRenderer();
-renderer.setSize( window.innerWidth, window.innerHeight );
-document.body.appendChild( renderer.domElement );
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
 
-const geometry = new THREE.BoxGeometry( 1, 1, 1 );
-const material = new THREE.MeshBasicMaterial( { color: 0x6545b2 } );
-const cube = new THREE.Mesh( geometry, material );
-scene.add( cube );
+const directionalLight = new THREE.DirectionalLight(0xffffff, 4);
+const ambientLight = new THREE.AmbientLight();
+scene.add(directionalLight);
+scene.add(ambientLight);
+directionalLight.position.set(5,10,5);
 
 camera.position.z = 5;
-camera.rotation.x = -0.4;
-camera.position.y = 2;
+camera.position.y = 5;
 
 document.getElementById("speed").addEventListener("input", changeSpeed);
 window.addEventListener("keydown", handleKeys);
 
+class Cube {
+    target_rotate;
+    target_translate;
+    geometry;
+    material;
+    mesh;
+    constructor(x,y,z, quat = new THREE.Quaternion().identity(), quat_t = new THREE.Quaternion().setFromEuler(new THREE.Euler(0,0,0))) {
+        this.target_rotate = quat_t;
+        this.geometry = new THREE.BoxGeometry(1, 1, 1);
+        this.material = new THREE.MeshStandardMaterial({color: 0x6545b2});
+
+        this.mesh = new THREE.Mesh(this.geometry, this.material);
+
+        this.mesh.position.set(x,y,z);
+        this.mesh.rotation.setFromQuaternion(quat);
+
+        this.target_translate = {x: x, y: y, z: z};
+        this.target_rotate = quat_t;
+
+        scene.add(this.mesh);
+    }
+    // Takes vector3 and sets target_rotation to look at it
+    setLookTarget(tg) {
+        let tg_v = new THREE.Vector3().subVectors(tg, this.mesh.position).normalize();
+        this.target_rotate = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3().setFromEuler(this.mesh.rotation), tg_v)
+        console.log(this.target_rotate, tg_v);
+    }
+    update() {
+        //this.target_rotate = new Quaternion().
+        this.mesh.quaternion.slerp(this.target_rotate, speed*delta);
+    }
+}
+class CubeController {
+    cubes;
+    constructor() {
+        this.cubes = new Array();
+    }
+    addCube(cube) {
+        this.cubes.push(cube);
+    }
+    setLookAll(tg) {
+        for (let i = 0; i < this.cubes.length; i++) {
+            this.cubes[i].setLookTarget(tg);
+        }
+    }
+    updateAll() {
+        for (let i = 0; i < this.cubes.length; i++) {
+            this.cubes[i].update();
+        }
+    }
+}
+
+let cubeCtrl = new CubeController();
+
+for (let x = -3; x < 3; x++) {
+    for (let y = -3; y < 3; y++) {
+        for (let z = -3; z < 3; z++) {
+            cubeCtrl.addCube(new Cube(x,y,z));
+        }
+    }
+}
+controls.update();
+cubeCtrl.setLookAll(new THREE.Vector3(10, 10, 10));
+
 function animate() {
     delta = clock.getDelta();
-    cube.quaternion.slerp(target, speed);
+    cubeCtrl.updateAll();
     //console.log(delta);
-
+    controls.update();
 
 	renderer.render( scene, camera );
 }
