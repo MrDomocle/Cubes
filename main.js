@@ -33,7 +33,7 @@ class Cube {
     geometry;
     material;
     mesh;
-    constructor(x,y,z, quat = new THREE.Quaternion().identity(), quat_t = new THREE.Quaternion().setFromEuler(new THREE.Euler(0,0,0))) {
+    constructor(x,y,z, quat = new THREE.Quaternion().identity(), quat_t = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI/2,0,0))) {
         this.target_rotate = quat_t;
         this.geometry = new THREE.BoxGeometry(1, 1, 1);
         this.material = new THREE.MeshStandardMaterial({color: 0x6545b2});
@@ -51,7 +51,8 @@ class Cube {
     // Takes vector3 and sets target_rotation to look at it
     setLookTarget(tg) {
         let tg_v = new THREE.Vector3().subVectors(tg, this.mesh.position).normalize();
-        this.target_rotate = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3().setFromEuler(this.mesh.rotation), tg_v)
+        this.target_rotate = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1).normalize(), tg_v)
+        console.log(this.target_rotate);
         console.log(this.target_rotate, tg_v);
     }
     update() {
@@ -83,9 +84,7 @@ let cubeCtrl = new CubeController();
 
 for (let x = -3; x < 3; x++) {
     for (let y = -3; y < 3; y++) {
-        for (let z = -3; z < 3; z++) {
-            cubeCtrl.addCube(new Cube(x,y,z));
-        }
+        cubeCtrl.addCube(new Cube(x,y,0));
     }
 }
 controls.update();
@@ -94,18 +93,19 @@ cubeCtrl.setLookAll(new THREE.Vector3(10, 10, 10));
 function animate() {
     delta = clock.getDelta();
     cubeCtrl.updateAll();
-    //console.log(delta);
     controls.update();
 
-	renderer.render( scene, camera );
+	renderer.render(scene, camera);
 }
-renderer.setAnimationLoop( animate );
+renderer.setAnimationLoop(animate);
 
 function changeSpeed(e) {
     console.log("set speed to "+e.target.value);
     speed = e.target.value;
 }
 
-function handleKeys() {
-
+function handleKeys(e) {
+    if (e.key == "r") {
+        cubeCtrl.setLookAll(camera.position);
+    }
 }
