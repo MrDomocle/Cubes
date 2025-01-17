@@ -7,7 +7,8 @@ const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerH
 var clock = new THREE.Clock();
 var delta = 0;
 
-var speed = 0;
+var speed = 6;
+var speed_curve = 2;
 
 var target = new THREE.Quaternion(0, 1, 0, 0);
 
@@ -25,7 +26,14 @@ directionalLight.position.set(5,10,5);
 camera.position.z = 5;
 camera.position.y = 5;
 
+// Define a cubic Bézier curve for transitions
+const p0 = new THREE.Vector3(0, 0, 0);
+const p1 = new THREE.Vector3(15, 25, 5);
+const p2 = new THREE.Vector3(35, -15, -25);
+const p3 = new THREE.Vector3(-25, -25, 0);
+
 document.getElementById("speed").addEventListener("input", changeSpeed);
+document.getElementById("speed_curve").addEventListener("input", changeSpeedCurve);
 window.addEventListener("keydown", handleKeys);
 
 // Individual cube class.
@@ -36,6 +44,7 @@ class Cube {
     target_curve;
 
     curve_t;
+    curve_t_t;
 
     geometry;
     material;
@@ -62,6 +71,8 @@ class Cube {
         this.done_rotate = true;
         this.done_translate = true;
         this.done_curve = true;
+        this.curve_t = 0.02;
+        this.curve_t_t = 0;
 
         this.offset = new THREE.Vector3().copy(ofs);
 
@@ -92,8 +103,14 @@ class Cube {
 
     // Set to move along Bezier curve
     setCurve(p1,p2,end) {
-        this.target_curve = new THREE.CubicBezierCurve3(this.mesh.position, p1, p2, end);
+        this.target_curve = new THREE.CubicBezierCurve3(
+            new THREE.Vector3().copy(this.mesh.position),
+            new THREE.Vector3().copy(p1),
+            new THREE.Vector3().copy(p2),
+            new THREE.Vector3().copy(end)
+        );
         this.done_curve = false;
+        this.curve_t = 0.001;
     }
 
     isDoneRotate() {
@@ -112,9 +129,12 @@ class Cube {
         }
 
         if (!this.done_curve) {
-            curve_t += (1-curve_t)*speed*delta;
-            this.mesh.position = this.target_curve.getPoint(curve_t);
-            if (curve_t >= 1) {
+            // Exponential growth of t
+            this.curve_t_t += delta;
+            this.curve_t = Math.pow(speed, this.curve_t_t)-1;
+            
+            this.mesh.position.copy(this.target_curve.getPoint(this.curve_t));
+            if (this.curve_t > 0.99) {
                 this.done_curve = true;
                 console.log("done");
             }
@@ -161,7 +181,9 @@ class CubeController {
     setTranslateAll(pos) {
         this.origin.copy(pos);
         for (let i = 0; i < this.cubes.length; i++) {
-            this.cubes[i].setTranslateTargetRelative(pos);
+            setTimeout(() => {
+                this.cubes[i].setTranslateTargetRelative(pos);
+            }, Math.random()*200);
         }
     }
     setTranslate(pos, i=0) {
@@ -170,7 +192,9 @@ class CubeController {
 
     setCurveAll(p1, p2, end) {
         for (let i = 0; i < this.cubes.length; i++) {
-            this.cubes[i].setCurve(p1, p2, end);
+            setTimeout(() => {
+                this.cubes[i].setCurve(p1, p2, end);
+            }, Math.random()*200);
         }
     }
 
@@ -179,18 +203,27 @@ class CubeController {
             this.cubes[i].update();
         }
     }
+
+    removeAll() {
+        for (let i = 0; i < this.cubes.length; i++) {
+            scene.remove(this.cubes[i].mesh);
+        }
+    }
 }
 
 let cubeCtrl = new CubeController();
-let step = 1.1;
-for (let x = -3*step; x < 3*step; x += step) {
-    for (let y = -3*step; y < 3*step; y += step) {
-        cubeCtrl.addCube(new Cube(
-            new THREE.Vector3(x,y,0),
-            new THREE.Vector3(x,y,0)
-        ));
+function spawn() {
+    let step = 1.1;
+    for (let x = -3*step; x < 3*step; x += step) {
+        for (let y = -3*step; y < 3*step; y += step) {
+            cubeCtrl.addCube(new Cube(
+                new THREE.Vector3(x,y,0),
+                new THREE.Vector3(x,y,0)
+            ));
+        }
     }
 }
+spawn();
 controls.update();
 
 function animate() {
@@ -205,6 +238,10 @@ renderer.setAnimationLoop(animate);
 function changeSpeed(e) {
     console.log("set speed to "+e.target.value);
     speed = e.target.value;
+}
+function changeSpeedCurve(e) {
+    speed_curve = e.target.value;
+    console.log("set speed_curve to "+e.target.value);
 }
 
 function handleKeys(e) {
@@ -224,6 +261,27 @@ function handleKeys(e) {
         cubeCtrl.setTranslate(camera.position);
     }
     if (e.key == "c") {
-        cubeCtrl.setCurveAll();
+        cubeCtrl.setCurveAll(new THREE.Vector3().copy(p1),new THREE.Vector3().copy(p2),new THREE.Vector3().copy(p3))
+    }
+    if (e.key == "x") {
+        cubeCtrl.removeAll();
+        spawn();
     }
 }
+
+function drawCurve() {
+    const bezierCurve = new THREE.CubicBezierCurve3(p0, p1, p2, p3);
+
+    // Test getPoint
+    const t = 0.5; // Midpoint
+    const point = bezierCurve.getPoint(t);
+
+    // Visualize the curve
+    const points = bezierCurve.getPoints(50);
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineBasicMaterial({ color: 0xff0000 });
+    const curveLine = new THREE.Line(geometry, material);
+
+    scene.add(curveLine);
+}
+//drawCurve();
