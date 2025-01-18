@@ -7,7 +7,7 @@ const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerH
 var clock = new THREE.Clock();
 var delta = 0;
 
-var speed = 6;
+var speed = 10;
 var speed_curve = 2;
 
 var target = new THREE.Quaternion(0, 1, 0, 0);
@@ -23,8 +23,7 @@ scene.add(directionalLight);
 scene.add(ambientLight);
 directionalLight.position.set(5,10,5);
 
-camera.position.z = 5;
-camera.position.y = 5;
+camera.position.z = 15;
 
 // Define a cubic Bézier curve for transitions
 const p0 = new THREE.Vector3(0, 0, 0);
@@ -55,8 +54,9 @@ class Cube {
     done_curve;
 
     offset;
+    index;
 
-    constructor(pos, ofs, quat = new THREE.Quaternion().identity()) {
+    constructor(pos, ofs, ix, quat = new THREE.Quaternion().identity()) {
         this.geometry = new THREE.BoxGeometry(1, 1, 1);
         this.material = new THREE.MeshStandardMaterial({color: 0x6545b2});
 
@@ -75,6 +75,7 @@ class Cube {
         this.curve_t_t = 0;
 
         this.offset = new THREE.Vector3().copy(ofs);
+        this.index = ix;
 
         scene.add(this.mesh);
     }
@@ -88,6 +89,12 @@ class Cube {
     setRotTarget(rot) {
         this.target_rotate.copy(rot);
         this.done_rotate = false;
+    }
+    // Set rotation immeditately
+    snapRot(rot) {
+        this.mesh.rotation.setFromQuaternion(rot);
+        this.target_rotate.copy(rot);
+        this.done_rotate = true;
     }
 
     // Sets translate and adds offset to keep shape of overall cube formation
@@ -110,7 +117,7 @@ class Cube {
             new THREE.Vector3().copy(end)
         );
         this.done_curve = false;
-        this.curve_t = 0.001;
+        this.curve_t = 0;
     }
 
     isDoneRotate() {
@@ -152,12 +159,32 @@ class Cube {
 class CubeController {
     cubes;
     origin;
+    waveActive;
+    waveTarget;
+    waveTime;
+    waveLength;
+    cubesX;
+    cubesY;
     constructor() {
         this.cubes = new Array();
         this.origin = new THREE.Vector3(0,0,0);
+        this.waveActive = false;
+        this.cubesX = 0;
+        this.cubesY = 0;
     }
-    addCube(cube) {
-        this.cubes.push(cube);
+    addCube(x,y, step) {
+        this.cubes.push(new Cube(
+            new THREE.Vector3(x*step,y*step,0),
+            new THREE.Vector3(x*step,y*step,0),
+            {x:x,y:y}
+        ));
+    }
+    cubeByCoordinate(x,y) {
+        for (let i = 0; i < this.cubes.length; i++) {
+            if (cubes[i].index.x == x && cubes[i].index.y == y) {
+                return i;
+            }
+        }
     }
 
     setLookAll(tg) {
@@ -175,6 +202,11 @@ class CubeController {
     setRotateAll(rot) {
         for (let i = 0; i < this.cubes.length; i++) {
             this.cubes[i].setRotTarget(rot);
+        }
+    }
+    snapRotateAll(rot) {
+        for (let i = 0; i < this.cubes.length; i++) {
+            this.cubes[i].snapRot(rot);
         }
     }
 
@@ -198,7 +230,34 @@ class CubeController {
         }
     }
 
+    swipeAll(mg, time) {
+        let tg = new THREE.Vector3(-1,1,0).multiplyScalar(mg);
+        let dir = new THREE.Vector3().subVectors(tg, this.origin).normalize();
+        let rot = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), dir);
+        this.waveTarget = rot;
+        this.waveLength = time;
+        this.waveTime = 0;
+        this.waveActive = true;
+    }
+
     updateAll() {
+        if (this.waveActive) {
+            this.waveTime += delta;
+            this.waveActive = this.waveTime < this.waveLength;
+            if (this.waveActive) {
+                let step = Math.floor((this.cubesX+this.cubesY)*(this.waveTime/this.waveLength));
+                
+                let diagonal = step-this.cubesY+1;
+
+                for (let i = 0; i < this.cubes.length; i++) {
+                    if (this.cubes[i].index.y-this.cubes[i].index.x == diagonal) {
+                        this.cubes[i].setRotTarget(this.waveTarget);
+                    } else {
+                        this.cubes[i].setRotTarget(new THREE.Quaternion().identity());
+                    }
+                }                
+            }
+        }
         for (let i = 0; i < this.cubes.length; i++) {
             this.cubes[i].update();
         }
@@ -211,15 +270,41 @@ class CubeController {
     }
 }
 
+// Helper object for creating a moving point (deprecated)
+class CubeTarget {
+    position;
+    length;
+    time;
+    vstart;
+    vend;
+
+    constructor(vstart, vend, length) {
+        this.position = vstart;
+        this.vstart = vstart;
+        this.vend = vend;
+        this.length = length;
+        this.time = 0;
+    }
+    update() {
+        this.time += delta;
+        let alpha = this.time/this.length;
+        this.position = new THREE.Vector3().lerpVectors(this.vstart, this.vend, alpha);
+        if (this.time > this.length) {
+            console.log("done");
+            return false;
+        }
+        return true;
+    }
+}
+
 let cubeCtrl = new CubeController();
 function spawn() {
     let step = 1.1;
-    for (let x = -3*step; x < 3*step; x += step) {
-        for (let y = -3*step; y < 3*step; y += step) {
-            cubeCtrl.addCube(new Cube(
-                new THREE.Vector3(x,y,0),
-                new THREE.Vector3(x,y,0)
-            ));
+    cubeCtrl.cubesX = 6;
+    cubeCtrl.cubesY = 6;
+    for (let x = -3; x < 3; x++) {
+        for (let y = -3; y < 3; y++) {
+            cubeCtrl.addCube(x,y,step)
         }
     }
 }
@@ -262,6 +347,9 @@ function handleKeys(e) {
     }
     if (e.key == "c") {
         cubeCtrl.setCurveAll(new THREE.Vector3().copy(p1),new THREE.Vector3().copy(p2),new THREE.Vector3().copy(p3))
+    }
+    if (e.key == "j") {
+        cubeCtrl.swipeAll(1000,1);
     }
     if (e.key == "x") {
         cubeCtrl.removeAll();
