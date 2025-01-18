@@ -1,6 +1,6 @@
 import * as THREE from 'three';
+import * as PARSE from './parser.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { textureLoad } from 'three/tsl';
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
 
@@ -9,8 +9,6 @@ var delta = 0;
 
 var speed = 10;
 var speed_curve = 2;
-
-var target = new THREE.Quaternion(0, 1, 0, 0);
 
 const renderer = new THREE.WebGLRenderer({alpha: true});
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -27,14 +25,16 @@ camera.position.z = 15;
 
 // Define a cubic Bézier curve for transitions
 const p0 = new THREE.Vector3(0, 0, 0);
-const p1 = new THREE.Vector3(15, 25, 5);
+const p1 = new THREE.Vector3(25, 45, 5);
 const p2 = new THREE.Vector3(35, -15, -25);
 const p3 = new THREE.Vector3(-25, -25, 0);
 
 document.getElementById("speed").addEventListener("input", changeSpeed);
 document.getElementById("speed_curve").addEventListener("input", changeSpeedCurve);
 window.addEventListener("keydown", handleKeys);
+window.addEventListener("paste", handlePaste);
 
+// MARK: Cube
 // Individual cube class.
 // Holds the cube mesh and all targets
 class Cube {
@@ -136,7 +136,6 @@ class Cube {
             this.mesh.position.copy(this.target_curve.getPoint(this.curve_t));
             if (this.curve_t > 0.99) {
                 this.done_curve = true;
-                console.log("done");
             }
         } else if (!this.done_translate) {
             this.mesh.position.lerp(this.target_translate, speed*delta);
@@ -148,6 +147,7 @@ class Cube {
     }
 }
 
+// MARK: CubeCtrl
 // Cube controller - each can be assigned Cube objects. Cubes should not be manipulated directly, but through a CubeController.
 class CubeController {
     cubes;
@@ -256,20 +256,41 @@ class CubeController {
     }
 }
 
+// MARK: Spawn
 let cubeCtrl = new CubeController();
-function spawn() {
-    let step = 1.1;
-    cubeCtrl.cubesX = 6;
-    cubeCtrl.cubesY = 6;
-    for (let x = -3; x < 3; x++) {
-        for (let y = -3; y < 3; y++) {
-            cubeCtrl.addCube(x,y,step)
+function spawn(parse = null) {
+    let step = 1.2;
+    if (parse == null) {
+        cubeCtrl.cubesX = 24;
+        cubeCtrl.cubesY = 24;
+        for (let x = -12; x < 12; x++) {
+            for (let y = -12; y < 12; y++) {
+                cubeCtrl.addCube(x,y,step)
+            }
+        }
+    } else {
+        cubeCtrl.removeAll();
+        cubeCtrl.cubesX = parse.x;
+        cubeCtrl.cubesY = parse.y;
+        let xStart = -Math.floor(parse.x/2);
+        let xEnd = -xStart;
+        let yStart = -Math.floor(parse.y/2);
+        let yEnd = -yStart;
+
+        console.log(xStart, xEnd, yStart, yEnd);
+        for (let x = xStart; x < xEnd; x++) {
+            for (let y = yStart; y < yEnd; y++) {
+                if (parse.block[x+Math.floor(parse.x/2)][y+Math.floor(parse.y/2)]) {
+                    cubeCtrl.addCube(x,y,step);
+                }
+            }
         }
     }
 }
 spawn();
 controls.update();
 
+// MARK: Draw/UI
 function animate() {
     delta = clock.getDelta();
     cubeCtrl.updateAll();
@@ -308,13 +329,15 @@ function handleKeys(e) {
         cubeCtrl.setCurveAll(new THREE.Vector3().copy(p1),new THREE.Vector3().copy(p2),new THREE.Vector3().copy(p3))
     }
     if (e.key == "j") {
-        cubeCtrl.swipeAll(1000,1);
+        cubeCtrl.swipeAll(1000,2);
     }
     if (e.key == "x") {
         cubeCtrl.removeAll();
         spawn();
     }
 }
+
+
 
 function drawCurve() {
     const bezierCurve = new THREE.CubicBezierCurve3(p0, p1, p2, p3);
@@ -331,4 +354,26 @@ function drawCurve() {
 
     scene.add(curveLine);
 }
-//drawCurve();
+// drawCurve();
+
+export function insertPattern(str) {
+    let type = PARSE.getPatternType(str);
+    console.log(type);
+    let parse;
+    if (type == "plaintext") {
+        parse = PARSE.parsePlaintext(str);
+    } else if (type == "rle") {
+        parse = PARSE.parseRle(str);
+    } else {
+        console.log("Not a recognised pattern");
+        return;
+    }
+    console.log(parse);
+    spawn(parse);
+}
+function handlePaste(e) {
+    let str = e.clipboardData.getData("text");
+    console.log("PASTING PATTERN");
+    console.log(str);
+    insertPattern(str);
+}
