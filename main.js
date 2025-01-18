@@ -120,13 +120,6 @@ class Cube {
         this.curve_t = 0;
     }
 
-    isDoneRotate() {
-        return this.done_rotate;
-    }
-    isDoneTranslate() {
-        return this.done_translate;
-    }
-
     update() {
         if (!this.done_rotate) {
             this.mesh.quaternion.slerp(this.target_rotate, speed*delta);
@@ -178,13 +171,6 @@ class CubeController {
             new THREE.Vector3(x*step,y*step,0),
             {x:x,y:y}
         ));
-    }
-    cubeByCoordinate(x,y) {
-        for (let i = 0; i < this.cubes.length; i++) {
-            if (cubes[i].index.x == x && cubes[i].index.y == y) {
-                return i;
-            }
-        }
     }
 
     setLookAll(tg) {
@@ -267,33 +253,6 @@ class CubeController {
         for (let i = 0; i < this.cubes.length; i++) {
             scene.remove(this.cubes[i].mesh);
         }
-    }
-}
-
-// Helper object for creating a moving point (deprecated)
-class CubeTarget {
-    position;
-    length;
-    time;
-    vstart;
-    vend;
-
-    constructor(vstart, vend, length) {
-        this.position = vstart;
-        this.vstart = vstart;
-        this.vend = vend;
-        this.length = length;
-        this.time = 0;
-    }
-    update() {
-        this.time += delta;
-        let alpha = this.time/this.length;
-        this.position = new THREE.Vector3().lerpVectors(this.vstart, this.vend, alpha);
-        if (this.time > this.length) {
-            console.log("done");
-            return false;
-        }
-        return true;
     }
 }
 
