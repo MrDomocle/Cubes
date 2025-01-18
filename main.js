@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as PARSE from './parser.js';
+import * as PATTERNS from './patterns.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
@@ -10,7 +11,7 @@ var delta = 0;
 var speed = 10;
 var speed_curve = 2;
 
-const renderer = new THREE.WebGLRenderer({alpha: true});
+const renderer = new THREE.WebGLRenderer({alpha: true, antialias: true, powerPreference: "low-power", });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -21,34 +22,35 @@ scene.add(directionalLight);
 scene.add(ambientLight);
 directionalLight.position.set(5,10,5);
 
-camera.position.z = 25;
+camera.position.z = 15;
 
 // Define a cubic Bézier curve for transitions
-const escapeCurves = [
-    [
-        new THREE.Vector3(25, 45, 5),
-        new THREE.Vector3(35, -15, -25),
-        new THREE.Vector3(-25, -25, 0)
-    ],
-    [
-        new THREE.Vector3(-20, -45, 15),
-        new THREE.Vector3(-50, 30, -30),
-        new THREE.Vector3(25, 10, 5)
-    ],
-    [
-        new THREE.Vector3(-20, 45, -15),
-        new THREE.Vector3(35, 25, 45),
-        new THREE.Vector3(0, -30, 0)
-    ],
-    [
-        new THREE.Vector3(-40, 20, -35),
-        new THREE.Vector3(35, -15, 45),
-        new THREE.Vector3(5, 40, -2)
-    ]
-]
+// Chatgpt wrote this function, i didnt have the time
+let escapeCurves;
+function randomiseCurves(n) {
+    escapeCurves = new Array();
+    for (let i = 0; i < n; i++) {
+        const array = [];
 
-document.getElementById("speed").addEventListener("input", changeSpeed);
-document.getElementById("speed_curve").addEventListener("input", changeSpeedCurve);
+        // Generate the 1st and 2nd Vector3s
+        for (let j = 0; j < 2; j++) {
+            const x = (Math.random() < 0.5 ? -1 : 1) * (Math.random() * (45 - 25) + 25);
+            const y = (Math.random() < 0.5 ? -1 : 1) * (Math.random() * (45 - 25) + 25);
+            const z = Math.random() * (10 - (-10)) + (-10);
+            array.push(new THREE.Vector3(x, y, z));
+        }
+
+        // Generate the 3rd Vector3
+        const x3 = (Math.random() < 0.5 ? -1 : 1) * (Math.random() * (60 - 50) + 50);
+        const y3 = (Math.random() < 0.5 ? -1 : 1) * (Math.random() * (60 - 50) + 50);
+        const z3 = Math.random() * (10 - (-10)) + (-10);
+        array.push(new THREE.Vector3(x3, y3, z3));
+
+        escapeCurves.push(array);
+    }
+}
+randomiseCurves(5);
+
 window.addEventListener("keydown", handleKeys);
 window.addEventListener("paste", handlePaste);
 
@@ -76,7 +78,7 @@ class Cube {
 
     constructor(pos, ofs, ix, grp, quat = new THREE.Quaternion().identity()) {
         this.geometry = new THREE.BoxGeometry(1, 1, 1);
-        this.material = new THREE.MeshStandardMaterial({color: 0x6545b2});
+        this.material = new THREE.MeshStandardMaterial({color: 0xffffff});
 
         this.mesh = new THREE.Mesh(this.geometry, this.material);
 
@@ -154,6 +156,8 @@ class Cube {
             this.mesh.position.copy(this.target_curve.getPoint(this.curve_t));
             if (this.curve_t > 0.99) {
                 this.done_curve = true;
+                cubeCtrl.cubesLeft--;
+                cubeCtrl.cubeGroup.remove(this.mesh);
             }
         } else if (!this.done_translate) {
             this.mesh.position.lerp(this.target_translate, speed*delta);
@@ -170,6 +174,8 @@ class Cube {
 class CubeController {
     cubes;
     cubeGroup;
+    cubeGroupAnchor;
+    cubesLeft;
     origin;
 
     waveActive;
@@ -190,10 +196,13 @@ class CubeController {
     hoverTurnProgress;
 
     curveInterval;
+    curveCallback;
+    curveDone;
 
     constructor() {
         this.cubes = new Array();
         this.cubeGroup = new THREE.Group();
+        this.cubeGroupAnchor = new THREE.Vector3(0,0,0);
         scene.add(this.cubeGroup);
         this.origin = new THREE.Vector3(0,0,0);
         this.waveActive = false;
@@ -201,6 +210,8 @@ class CubeController {
         this.cubesY = 0;
         this.hoverActive = false;
         this.curveInterval = null;
+        this.cubesLeft = 0;
+        this.curveDone = true;
     }
     addCube(x,y, step) {
         this.cubes.push(new Cube(
@@ -209,6 +220,7 @@ class CubeController {
             {x:x,y:y},
             this.cubeGroup
         ));
+        this.cubesLeft++;
     }
 
     setLookAll(tg) {
@@ -246,44 +258,29 @@ class CubeController {
         this.cubes[i].setTranslateTarget(pos);
     }
 
-    setCurveAll(curves, pattern) {
-        console.log(pattern);
+    setCurveAll(curves, cb = null) {
         try {
             clearInterval(this.curveInterval);
         } catch {
 
         }
-        switch (pattern) {
-            case "d":
-                let t = -this.cubesY;
-                this.curveInterval = setInterval( () => {
-                    if (t >= this.cubesX-1) { clearInterval(this.curveInterval); console.log("done"); }
-        
-                    for (let i = 0; i < this.cubes.length; i++) {
-                        if (this.cubes[i].index.y-this.cubes[i].index.x == t) {
-                            setTimeout( () => {
-                                // let curve = Math.floor(Math.random()*curves.length);
-                                let curve = (t+this.cubesY) % curves.length;
-                                this.cubes[i].setCurve(curves[curve][0],curves[curve][1],curves[curve][2]);
-                            }, Math.random()*60)
-                            
-                        }
-                    }
-        
-                    t++;
-                }, 20);
-                break;
-            case "l":
-                let k = 0;
-                this.curveInterval = setInterval( () => {
-                    if (k >= this.cubes.length-1) { clearInterval(this.curveInterval); console.log("done"); }
-                    let curve = Math.floor(Math.random()*curves.length);
-                    this.cubes[k].setCurve(curves[curve][0],curves[curve][1],curves[curve][2]);
-                    k++
-                }, 4);
-                break;
-        }
-        
+        this.curveDone = false;
+        this.curveCallback = cb;
+        let t = -Math.floor(this.cubesX/2)-Math.floor(this.cubesY/2);
+        this.curveInterval = setInterval( () => {
+            if (t >= this.cubesX) { clearInterval(this.curveInterval); console.log("done"); }
+            for (let i = 0; i < this.cubes.length; i++) {
+                if (this.cubes[i].index.y-this.cubes[i].index.x == t) {
+                    setTimeout( () => {
+                        // let curve = Math.floor(Math.random()*curves.length);
+                        let curve = (t+this.cubesX) % curves.length;
+                        this.cubes[i].setCurve(curves[curve][0],curves[curve][1],curves[curve][2]);
+                    }, Math.random()*60)
+                }
+            }
+
+            t++;
+        }, 20);
     }
 
     // Mg - magnitude of swipe
@@ -310,6 +307,11 @@ class CubeController {
     }
     disableHover() {
         this.hoverActive = false;
+    }
+
+    setAnchor(x,y,z) {
+        this.cubeGroup.position.set(x,y,z);
+        this.cubeGroupAnchor.set(x,y,z);
     }
 
     updateAll() {
@@ -339,7 +341,7 @@ class CubeController {
             this.hoverProgress += delta/(this.hoverPeriod/(2*Math.PI));
             this.hoverTurnProgress += delta/(this.hoverTurnPeriod/(2*Math.PI));
             // translation
-            this.cubeGroup.position.y = Math.sin(this.hoverProgress)*this.hoverAmplitude;
+            this.cubeGroup.position.y = this.cubeGroupAnchor.y + Math.sin(this.hoverProgress)*this.hoverAmplitude;
             this.cubeGroup.rotation.y = Math.sin(this.hoverTurnProgress)*this.hoverTurnAmplitude;
             this.cubeGroup.rotation.z = Math.cos(this.hoverTurnProgress)*this.hoverTurnAmplitude;
             if (this.hoverProgress > 2*Math.PI) {
@@ -349,9 +351,17 @@ class CubeController {
                 this.hoverTurnProgress = 0;
             }
         }
-        // Apply
+        // Apply and check curve transition status
         for (let i = 0; i < this.cubes.length; i++) {
             this.cubes[i].update();
+        }
+
+        if (this.cubesLeft <= 0 && !this.curveDone) {
+            console.log("all done");
+            this.curveDone = true;
+            if (this.curveCallback != null) {
+                this.curveCallback();
+            }
         }
     }
 
@@ -386,7 +396,7 @@ function spawn(parse = null) {
         
         if (parse.x & 1) { parse.x++ }
         if (parse.y & 1) { parse.y++ }
-        console.log(parse);
+        
         cubeCtrl.cubesX = parse.x;
         cubeCtrl.cubesY = parse.y;
         let xStart = -Math.floor(parse.x/2);
@@ -394,7 +404,6 @@ function spawn(parse = null) {
         let yStart = -Math.floor(parse.y/2);
         let yEnd = -yStart;
 
-        console.log(xStart, xEnd, yStart, yEnd);
         for (let x = xStart; x < xEnd; x++) {
             for (let y = yStart; y < yEnd; y++) {
                 try {
@@ -402,7 +411,7 @@ function spawn(parse = null) {
                         cubeCtrl.addCube(x,-y,step);
                     }
                 } catch {
-                    console.log("nothing");
+
                 }
             }
         }
@@ -441,10 +450,10 @@ function handleKeys(e) {
         cubeCtrl.setTranslateAll(camera.position);
     }
     if (e.key == "d") {
-        cubeCtrl.setCurveAll(escapeCurves, "d");
+        cubeCtrl.setCurveAll(escapeCurves);
     }
-    if (e.key == "e") {
-        cubeCtrl.setCurveAll(escapeCurves, "l");
+    if (e.key == "s") {
+        cubeCtrl.setCurveAll(escapeCurves, );
     }
     if (e.key == "j") {
         cubeCtrl.swipeAll(1000,2,1/32);
@@ -469,19 +478,18 @@ function drawCurve(i) {
     // Visualize the curve
     let points = bezierCurve.getPoints(50);
     let geometry = new THREE.BufferGeometry().setFromPoints(points);
-    let material = new THREE.LineBasicMaterial({ color: i*54 });
+    let material = new THREE.LineBasicMaterial({ color: 0xffffff });
     let curveLine = new THREE.Line(geometry, material);
 
     scene.add(curveLine);
 }
-for (let i = 0; i < escapeCurves.length; i++) {
-    drawCurve(i)
-}
+// for (let i = 0; i < escapeCurves.length; i++) {
+//     drawCurve(i)
+// }
 
-// Call this with an RLE/Plaintext string to set cube pattern
+// Call this with a RLE/Plaintext string to set cube pattern
 export function insertPattern(str) {
     let type = PARSE.getPatternType(str);
-    console.log(type);
     let parse;
     if (type == "plaintext") {
         parse = PARSE.parsePlaintext(str);
@@ -491,7 +499,6 @@ export function insertPattern(str) {
         console.log("Not a recognised pattern");
         return;
     }
-    console.log(parse);
     spawn(parse);
 }
 function handlePaste(e) {
@@ -500,3 +507,8 @@ function handlePaste(e) {
     console.log(str);
     insertPattern(str);
 }
+
+let patternPick = "orpheus";
+insertPattern(PATTERNS.patterns[patternPick]);
+camera.position.set(PATTERNS.pattern_cameras[patternPick].x, PATTERNS.pattern_cameras[patternPick].y, PATTERNS.pattern_cameras[patternPick].z);
+cubeCtrl.enableHover(0.7, 8, 0.054, 13);

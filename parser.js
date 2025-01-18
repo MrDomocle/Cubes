@@ -1,4 +1,3 @@
-
 // MARK: Plaintext
 export function parsePlaintext(str) {
     let block = Array();
