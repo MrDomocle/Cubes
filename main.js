@@ -270,6 +270,10 @@ function spawn(parse = null) {
         }
     } else {
         cubeCtrl.removeAll();
+        
+        if (parse.x & 1) { parse.x++ }
+        if (parse.y & 1) { parse.y++ }
+        console.log(parse);
         cubeCtrl.cubesX = parse.x;
         cubeCtrl.cubesY = parse.y;
         let xStart = -Math.floor(parse.x/2);
@@ -280,8 +284,12 @@ function spawn(parse = null) {
         console.log(xStart, xEnd, yStart, yEnd);
         for (let x = xStart; x < xEnd; x++) {
             for (let y = yStart; y < yEnd; y++) {
-                if (parse.block[x+Math.floor(parse.x/2)][y+Math.floor(parse.y/2)]) {
-                    cubeCtrl.addCube(x,y,step);
+                try {
+                    if (parse.block[y-yStart][x-xStart]) {
+                        cubeCtrl.addCube(x,-y,step);
+                    }
+                } catch {
+                    console.log("nothing");
                 }
             }
         }
