@@ -11,6 +11,8 @@ var delta = 0;
 var speed = 10;
 var speed_curve = 2;
 
+const CURVE_COUNT = 5;
+
 const renderer = new THREE.WebGLRenderer({alpha: true, antialias: true, powerPreference: "low-power", });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
@@ -26,10 +28,10 @@ camera.position.z = 15;
 
 // Define a cubic Bézier curve for transitions
 // Chatgpt wrote this function, i didnt have the time
-let escapeCurves;
-function randomiseCurves(n) {
-    escapeCurves = new Array();
-    for (let i = 0; i < n; i++) {
+let curves;
+function randomiseCurves() {
+    curves = new Array();
+    for (let i = 0; i < CURVE_COUNT; i++) {
         const array = [];
 
         // Generate the 1st and 2nd Vector3s
@@ -46,10 +48,13 @@ function randomiseCurves(n) {
         const z3 = Math.random() * (10 - (-10)) + (-10);
         array.push(new THREE.Vector3(x3, y3, z3));
 
-        escapeCurves.push(array);
+        curves.push(array);
     }
+
+    // for (let i = 0; i < curves.length; i++) {
+    //     drawCurve(i)
+    // }
 }
-randomiseCurves(5);
 
 window.addEventListener("keydown", handleKeys);
 window.addEventListener("paste", handlePaste);
@@ -61,6 +66,7 @@ class Cube {
     target_rotate;
     target_translate;
     target_curve;
+    target_curve_end;
 
     curve_t;
     curve_t_t;
@@ -72,6 +78,8 @@ class Cube {
     done_rotate;
     done_translate;
     done_curve;
+
+    destroy_on_curve_end;
 
     offset;
     index;
@@ -129,15 +137,18 @@ class Cube {
     }
 
     // Set to move along Bezier curve
-    setCurve(p1,p2,end) {
+    setCurve(p1,p2,end, destroy) {
         this.target_curve = new THREE.CubicBezierCurve3(
             new THREE.Vector3().copy(this.mesh.position),
             new THREE.Vector3().copy(p1),
             new THREE.Vector3().copy(p2),
             new THREE.Vector3().copy(end)
         );
+        this.target_curve_end = new THREE.Vector3().copy(end);
         this.done_curve = false;
         this.curve_t = 0;
+        this.curve_t_t = 0;
+        this.destroy_on_curve_end = destroy;
     }
 
     update() {
@@ -154,10 +165,14 @@ class Cube {
             this.curve_t = Math.pow(speed_curve, this.curve_t_t)-1;
             
             this.mesh.position.copy(this.target_curve.getPoint(this.curve_t));
-            if (this.curve_t > 0.99) {
+            if (this.curve_t > 0.999) {
                 this.done_curve = true;
                 cubeCtrl.cubesLeft--;
-                cubeCtrl.cubeGroup.remove(this.mesh);
+                if (this.destroy_on_curve_end) {
+                    cubeCtrl.cubeGroup.remove(this.mesh);
+                } else {
+                    this.mesh.position.copy(this.target_curve_end);
+                }
             }
         } else if (!this.done_translate) {
             this.mesh.position.lerp(this.target_translate, speed*delta);
@@ -186,6 +201,7 @@ class CubeController {
 
     cubesX;
     cubesY;
+    cubesStep;
 
     hoverPeriod;
     hoverAmplitude;
@@ -213,14 +229,18 @@ class CubeController {
         this.cubesLeft = 0;
         this.curveDone = true;
     }
-    addCube(x,y, step) {
+    addCube(x,y, step, hide=false) {
         this.cubes.push(new Cube(
             new THREE.Vector3(x*step,y*step,0),
             new THREE.Vector3(x*step,y*step,0),
             {x:x,y:y},
             this.cubeGroup
         ));
+        if (hide) {
+            this.cubes[this.cubes.length-1].mesh.position.set(69420,69420,0);
+        }
         this.cubesLeft++;
+        this.cubesStep = step;
     }
 
     setLookAll(tg) {
@@ -258,29 +278,75 @@ class CubeController {
         this.cubes[i].setTranslateTarget(pos);
     }
 
-    setCurveAll(curves, cb = null) {
+    setCurveOutAll(cb = null) {
+        if (!this.curveDone) { return; }
         try {
             clearInterval(this.curveInterval);
         } catch {
 
         }
+        randomiseCurves();
         this.curveDone = false;
         this.curveCallback = cb;
+        this.cubesLeft = this.cubes.length;
         let t = -Math.floor(this.cubesX/2)-Math.floor(this.cubesY/2);
         this.curveInterval = setInterval( () => {
             if (t >= this.cubesX) { clearInterval(this.curveInterval); console.log("done"); }
             for (let i = 0; i < this.cubes.length; i++) {
                 if (this.cubes[i].index.y-this.cubes[i].index.x == t) {
                     setTimeout( () => {
-                        // let curve = Math.floor(Math.random()*curves.length);
                         let curve = (t+this.cubesX) % curves.length;
-                        this.cubes[i].setCurve(curves[curve][0],curves[curve][1],curves[curve][2]);
+
+                        this.cubes[i].setCurve(
+                            curves[curve][0],
+                            curves[curve][1],
+                            curves[curve][2],
+                            true
+                        );
                     }, Math.random()*60)
                 }
             }
 
             t++;
         }, 20);
+    }
+    setCurveInAll(cb = null) {
+        if (!this.curveDone) { return; }
+        try {
+            clearInterval(this.curveInterval);
+        } catch {
+
+        }
+        randomiseCurves();
+        this.curveDone = false;
+        this.curveCallback = cb;
+        this.cubesLeft = this.cubes.length;
+        let t = -Math.floor(this.cubesX/2)-Math.floor(this.cubesY/2);
+        this.curveInterval = setInterval( () => {
+            if (t >= this.cubesX) { clearInterval(this.curveInterval); console.log("done"); }
+            for (let i = 0; i < this.cubes.length; i++) {
+                if (this.cubes[i].index.y-this.cubes[i].index.x == t) {
+                    setTimeout( () => {
+                        let curve = (t+this.cubesX) % curves.length;
+                        this.cubes[i].mesh.position.copy(curves[curve][2]);
+
+                        this.cubes[i].setCurve(
+                            curves[curve][1],
+                            curves[curve][0],
+                            new THREE.Vector3(this.cubes[i].index.x*this.cubesStep, this.cubes[i].index.y*this.cubesStep, 0),
+                            false
+                        );
+
+                    }, Math.random()*60)
+                }
+            }
+
+            t++;
+        }, 20);
+    }
+    resetCurve() {
+        console.log("curve done");
+        this.curveDone = true;
     }
 
     // Mg - magnitude of swipe
@@ -357,8 +423,6 @@ class CubeController {
         }
 
         if (this.cubesLeft <= 0 && !this.curveDone) {
-            console.log("all done");
-            this.curveDone = true;
             if (this.curveCallback != null) {
                 this.curveCallback();
             }
@@ -381,14 +445,14 @@ class CubeController {
 
 // MARK: Spawn
 let cubeCtrl = new CubeController();
-function spawn(parse = null) {
+function spawn(parse = null, hide = false) {
     let step = 1.2;
     if (parse == null) {
         cubeCtrl.cubesX = 24;
         cubeCtrl.cubesY = 24;
         for (let x = -12; x < 12; x++) {
             for (let y = -12; y < 12; y++) {
-                cubeCtrl.addCube(x,y,step)
+                cubeCtrl.addCube(x,y,step, hide);
             }
         }
     } else {
@@ -408,7 +472,7 @@ function spawn(parse = null) {
             for (let y = yStart; y < yEnd; y++) {
                 try {
                     if (parse.block[y-yStart][x-xStart]) {
-                        cubeCtrl.addCube(x,-y,step);
+                        cubeCtrl.addCube(x,-y,step, hide);
                     }
                 } catch {
 
@@ -417,7 +481,6 @@ function spawn(parse = null) {
         }
     }
 }
-spawn();
 controls.update();
 
 // MARK: Draw/UI
@@ -450,19 +513,20 @@ function handleKeys(e) {
         cubeCtrl.setTranslateAll(camera.position);
     }
     if (e.key == "d") {
-        cubeCtrl.setCurveAll(escapeCurves);
+        cubeCtrl.setCurveOutAll(cubeCtrl.resetCurve);
     }
-    if (e.key == "s") {
-        cubeCtrl.setCurveAll(escapeCurves, );
+    if (e.key == "f") {
+        insertPattern(PATTERNS.patterns[patternPick]);
+        cubeCtrl.setCurveInAll(cubeCtrl.resetCurve);
     }
     if (e.key == "j") {
         cubeCtrl.swipeAll(1000,2,1/32);
     }
-    if (e.key == "f") {
-        cubeCtrl.enableHover(0.7, 8, Math.PI/58, 13);
-    }
     if (e.key == "g") {
         cubeCtrl.disableHover();
+    }
+    if (e.key == "p") {
+        console.log(camera.position);
     }
     if (e.key == "x") {
         cubeCtrl.removeAll();
@@ -473,7 +537,7 @@ function handleKeys(e) {
 
 // Debug for making curve settings
 function drawCurve(i) {
-    const bezierCurve = new THREE.CubicBezierCurve3(new THREE.Vector3(0,0,0), escapeCurves[i][0], escapeCurves[i][1], escapeCurves[i][2]);
+    const bezierCurve = new THREE.CubicBezierCurve3(new THREE.Vector3(0,0,0), curves[i][0], curves[i][1], curves[i][2]);
 
     // Visualize the curve
     let points = bezierCurve.getPoints(50);
@@ -483,9 +547,6 @@ function drawCurve(i) {
 
     scene.add(curveLine);
 }
-// for (let i = 0; i < escapeCurves.length; i++) {
-//     drawCurve(i)
-// }
 
 // Call this with a RLE/Plaintext string to set cube pattern
 export function insertPattern(str) {
@@ -499,7 +560,7 @@ export function insertPattern(str) {
         console.log("Not a recognised pattern");
         return;
     }
-    spawn(parse);
+    spawn(parse, true);
 }
 function handlePaste(e) {
     let str = e.clipboardData.getData("text");
@@ -512,3 +573,4 @@ let patternPick = "orpheus";
 insertPattern(PATTERNS.patterns[patternPick]);
 camera.position.set(PATTERNS.pattern_cameras[patternPick].x, PATTERNS.pattern_cameras[patternPick].y, PATTERNS.pattern_cameras[patternPick].z);
 cubeCtrl.enableHover(0.7, 8, 0.054, 13);
+cubeCtrl.setCurveInAll(cubeCtrl.resetCurve);

@@ -20,6 +20,6 @@ b2o4b4o3b2obo$8b2o3b2o4b2o3b3o$7b4o3b2o7b2obo$6b5o4b2o5b3o$5b2ob2o6b2o
 2o!`,
 }
 export const pattern_cameras = {
-    orpheus: {x:20,y:0,z:35},
+    orpheus: {x:22,y:3,z:38},
     esp32: {x:10,y:0,z:25}
 }
