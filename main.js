@@ -16,7 +16,6 @@ const CURVE_COUNT = 5;
 const renderer = new THREE.WebGLRenderer({alpha: true, antialias: true, powerPreference: "low-power", });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
-const controls = new OrbitControls(camera, renderer.domElement);
 
 const directionalLight = new THREE.DirectionalLight(0xffffff, 4);
 const ambientLight = new THREE.AmbientLight();
@@ -56,8 +55,13 @@ function randomiseCurves() {
     // }
 }
 
-window.addEventListener("keydown", handleKeys);
-window.addEventListener("paste", handlePaste);
+let doControl = true;
+let controls;
+if (doControl) {
+    window.addEventListener("keydown", handleKeys);
+    window.addEventListener("paste", handlePaste);
+    controls = new OrbitControls(camera, renderer.domElement);
+}
 
 // MARK: Cube
 // Individual cube class.
@@ -442,10 +446,12 @@ class CubeController {
         }
     }
 }
+let cubeCtrl = new CubeController();
 
 // MARK: Spawn
-let cubeCtrl = new CubeController();
 function spawn(parse = null, hide = false) {
+    cubeCtrl.removeAll();
+    cubeCtrl = new CubeController();
     let step = 1.2;
     if (parse == null) {
         cubeCtrl.cubesX = 24;
@@ -456,7 +462,6 @@ function spawn(parse = null, hide = false) {
             }
         }
     } else {
-        cubeCtrl.removeAll();
         
         if (parse.x & 1) { parse.x++ }
         if (parse.y & 1) { parse.y++ }
@@ -480,14 +485,14 @@ function spawn(parse = null, hide = false) {
             }
         }
     }
+    console.log(cubeCtrl.cubes.length+" cubes"); 
 }
-controls.update();
 
 // MARK: Draw/UI
 function animate() {
     delta = clock.getDelta();
     cubeCtrl.updateAll();
-    controls.update();
+    if (doControl) { controls.update(); }
 
 	renderer.render(scene, camera);
 }
@@ -567,10 +572,14 @@ function handlePaste(e) {
     console.log("PASTING PATTERN");
     console.log(str);
     insertPattern(str);
+    cubeCtrl.setCurveInAll(cubeCtrl.resetCurve);
 }
 
-let patternPick = "orpheus";
+// MARK: Init
+
+let patternPick = "makerspace";
 insertPattern(PATTERNS.patterns[patternPick]);
 camera.position.set(PATTERNS.pattern_cameras[patternPick].x, PATTERNS.pattern_cameras[patternPick].y, PATTERNS.pattern_cameras[patternPick].z);
+camera.lookAt(new THREE.Vector3(0,0,0));
 cubeCtrl.enableHover(0.7, 8, 0.054, 13);
 cubeCtrl.setCurveInAll(cubeCtrl.resetCurve);
